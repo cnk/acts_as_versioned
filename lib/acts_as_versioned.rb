@@ -188,8 +188,7 @@ module ActiveRecord #:nodoc:
           self.non_versioned_columns        = [self.primary_key, inheritance_column, 'version', 'lock_version', versioned_inheritance_column, 'created_at', 'created_on']
           self.version_association_options  = {
                                                 :class_name  => "#{self.to_s}::#{versioned_class_name}",
-                                                :foreign_key => versioned_foreign_key,
-                                                :dependent   => :delete_all
+                                                :foreign_key => versioned_foreign_key
                                               }.merge(options[:association_options] || {})
 
           if block_given?
@@ -216,11 +215,12 @@ module ActiveRecord #:nodoc:
             before_save  :set_new_version
             after_save   :save_version
             after_save   :clear_old_versions
+            before_destroy :save_final_version
 
             unless options[:if_changed].nil?
               self.track_altered_attributes = true
               options[:if_changed] = [options[:if_changed]] unless options[:if_changed].is_a?(Array)
-              self.version_if_changed = options[:if_changed]
+              self.version_if_changed = options[:if_changed].push(:deleted_at)
             end
 
             include options[:extend] if options[:extend].is_a?(Module)
@@ -290,6 +290,12 @@ module ActiveRecord #:nodoc:
           if excess_baggage > 0
             self.class.versioned_class.delete_all ["version <= ? and #{self.class.versioned_foreign_key} = ?", excess_baggage, id]
           end
+        end
+
+        # CNK add method to do work of acts as paranoid, then call this from a before_destroy filter
+        def save_final_version
+          self.deleted_at = Time.now()
+          self.save
         end
 
         # Reverts a model to a given version.  Takes either a version number or an instance of the versioned model
@@ -411,11 +417,13 @@ module ActiveRecord #:nodoc:
             # create version column in main table if it does not exist
             if !self.content_columns.find { |c| %w(version lock_version).include? c.name }
               self.connection.add_column table_name, :version, :integer
+              self.connection.add_column table_name, :deleted_at, :timestamp
             end
 
             self.connection.create_table(versioned_table_name, create_table_options) do |t|
               t.column versioned_foreign_key, :integer
               t.column :version, :integer
+              t.column :deleted_at, :timestamp
             end
 
             updated_col = nil
