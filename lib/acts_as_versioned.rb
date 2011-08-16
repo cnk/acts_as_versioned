@@ -423,7 +423,6 @@ module ActiveRecord #:nodoc:
             self.connection.create_table(versioned_table_name, create_table_options) do |t|
               t.column versioned_foreign_key, :integer
               t.column :version, :integer
-              t.column :deleted_at, :timestamp
             end
 
             updated_col = nil
