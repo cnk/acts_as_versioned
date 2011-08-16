@@ -417,6 +417,9 @@ module ActiveRecord #:nodoc:
             # create version column in main table if it does not exist
             if !self.content_columns.find { |c| %w(version lock_version).include? c.name }
               self.connection.add_column table_name, :version, :integer
+            end
+
+            if !self.content_columns.find { |c| %w(deleted_at).include? c.name }
               self.connection.add_column table_name, :deleted_at, :timestamp
             end
 
@@ -425,9 +428,10 @@ module ActiveRecord #:nodoc:
               t.column :version, :integer
             end
 
-            updated_col = nil
+            updated_col = deleted_at_col = nil
             self.versioned_columns.each do |col| 
               updated_col = col if !updated_col && %(updated_at updated_on).include?(col.name)
+              deleted_at_col = col if !deleted_at_col && col.name == "deleted_at"
               self.connection.add_column versioned_table_name, col.name, col.type, 
                 :limit     => col.limit, 
                 :default   => col.default,
@@ -445,6 +449,10 @@ module ActiveRecord #:nodoc:
 
             if updated_col.nil?
               self.connection.add_column versioned_table_name, :updated_at, :timestamp
+            end
+
+            if deleted_at_col.nil?
+              self.connection.add_column versioned_table_name, :deleted_at, :timestamp
             end
           end
 
